@@ -54,19 +54,21 @@ type FollowResponse struct {
 }
 
 func GetFollowers(stream string, followers chan<- string) error {
+	concurrency := 1
+	sem := make(chan bool, concurrency)
 	var wg sync.WaitGroup
-	error_channel := make(chan error)
 	total := 1
 	limit := 100
 
 	for count := 0; count < total; count += limit {
+		sem <- true
 		wg.Add(1)
 		go func(count int) {
-			defer wg.Done()
+			defer func() { <-sem; wg.Done() }()
 			url := fmt.Sprintf("https://api.twitch.tv/kraken/channels/"+stream+"/follows?limit=%d&offset=%d", limit, count)
 			names, err := FollowRequest(url)
 			if err != nil {
-				error_channel <- err
+				count -= limit
 				return
 			}
 			for _, name := range names.Follows {
@@ -80,28 +82,25 @@ func GetFollowers(stream string, followers chan<- string) error {
 	}
 	wg.Wait()
 	close(followers)
-	select {
-	case err := <-error_channel:
-		return err
-	default:
-		return nil
-	}
+
+	return nil
 }
 
 func GetFollowed(user string, followed chan<- string) error {
+	concurrency := 1
+	sem := make(chan bool, concurrency)
 	var wg sync.WaitGroup
-	error_channel := make(chan error)
 	total := 1
 	limit := 100
-
 	for count := 0; count < total; count += limit {
+		sem <- true
 		wg.Add(1)
 		go func(count int) {
-			defer wg.Done()
+			defer func() { <-sem; wg.Done() }()
 			url := fmt.Sprintf("https://api.twitch.tv/kraken/users/"+user+"/follows/channels?limit=%d&offset=%d", limit, count)
 			names, err := FollowRequest(url)
 			if err != nil {
-				error_channel <- err
+				count -= limit
 				return
 			}
 
@@ -116,12 +115,8 @@ func GetFollowed(user string, followed chan<- string) error {
 	}
 	wg.Wait()
 	close(followed)
-	select {
-	case err := <-error_channel:
-		return err
-	default:
-		return nil
-	}
+
+	return nil
 }
 
 func FollowRequest(url string) (FollowResponse, error) {

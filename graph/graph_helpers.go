@@ -8,57 +8,62 @@ import (
 	"github.com/jmcvetta/neoism"
 )
 
-func AddUsersToDB(user string, names <-chan string, next chan<- string, db *neoism.Database) error {
+func AddFollowedToDB(user string, names <-chan string, next chan<- string, db *neoism.Database) error {
 	var wg sync.WaitGroup
 	var qs []*neoism.CypherQuery
+	error_channel := make(chan error, 100000)
+	concurrency := 1
+	sem := make(chan bool, concurrency)
 	old_count := 0
 	count := 0
 	fmt.Printf("")
 
 	tx, err := db.Begin([]*neoism.CypherQuery{})
 	if err != nil {
-		fmt.Println("A")
 		return err
 	}
 	for name := range names {
 		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
+		sem <- true
+		go func(name string, count int) {
+			defer func() { wg.Done(); <-sem }()
 			cq := neoism.CypherQuery{
 				Statement: `
 					MERGE (user:User {name: {self}})
 					MERGE (streamer:User {name: {streamer}})
 					MERGE (user)-[:FOLLOWS]->(streamer)
-					RETURN user
 				`,
 				Parameters: neoism.Props{"self": user, "streamer": name},
 			}
 			qs = append(qs, &cq)
 			next <- name
-		}(name)
-		if count > 1000 {
-			if err := tx.Query(qs[old_count:count]); err != nil {
-				fmt.Println("B")
-				return err
+
+			if count > 10000 {
+				if err := tx.Query(qs[old_count:count]); err != nil {
+					error_channel <- err
+				}
+				old_count = count
 			}
-			old_count = count
-		}
+		}(name, count)
 		count++
 	}
 	wg.Wait()
 	if old_count != count {
 		if err := tx.Query(qs[old_count:count]); err != nil {
-			fmt.Println("C")
 			return err
 		}
 	}
 	tx.Commit()
+	select {
+	case err := <-error_channel:
+		return err
+	default:
+		return nil
+	}
 
-	return nil
 }
 
-func AddUsersToDB2(user string, names <-chan string, next chan<- string, db *neoism.Database) error {
-	var wg sync.WaitGroup
+func AddFollowersToDB(user string, names <-chan string, next chan<- string, db *neoism.Database) error {
 	var qs []*neoism.CypherQuery
 	old_count := 0
 	count := 0
@@ -66,38 +71,30 @@ func AddUsersToDB2(user string, names <-chan string, next chan<- string, db *neo
 
 	tx, err := db.Begin([]*neoism.CypherQuery{})
 	if err != nil {
-		fmt.Println("A")
 		return err
 	}
 	for name := range names {
-		wg.Add(1)
-		go func(name string) {
-			defer wg.Done()
-			cq := neoism.CypherQuery{
-				Statement: `
+		cq := neoism.CypherQuery{
+			Statement: `
 					MERGE (user:User {name: {self}})
 					MERGE (streamer:User {name: {streamer}})
-					MERGE (streamer)-[:FOLLOWS]->(user)
-					RETURN user
+					MERGE (user)<-[:FOLLOWS]-(streamer)
 				`,
-				Parameters: neoism.Props{"self": user, "streamer": name},
-			}
-			qs = append(qs, &cq)
-			next <- name
-		}(name)
+			Parameters: neoism.Props{"self": user, "streamer": name},
+		}
+		qs = append(qs, &cq)
+		next <- name
+
 		if count > 1000 {
 			if err := tx.Query(qs[old_count:count]); err != nil {
-				fmt.Println("B")
 				return err
 			}
 			old_count = count
 		}
 		count++
 	}
-	wg.Wait()
 	if old_count != count {
 		if err := tx.Query(qs[old_count:count]); err != nil {
-			fmt.Println("C")
 			return err
 		}
 	}
