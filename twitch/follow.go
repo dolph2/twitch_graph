@@ -54,7 +54,7 @@ type FollowResponse struct {
 }
 
 func GetFollowers(stream string, followers chan<- string) error {
-	concurrency := 1
+	concurrency := 10
 	sem := make(chan bool, concurrency)
 	var wg sync.WaitGroup
 	total := 1
@@ -87,7 +87,7 @@ func GetFollowers(stream string, followers chan<- string) error {
 }
 
 func GetFollowed(user string, followed chan<- string) error {
-	concurrency := 1
+	concurrency := 10
 	sem := make(chan bool, concurrency)
 	var wg sync.WaitGroup
 	total := 1
