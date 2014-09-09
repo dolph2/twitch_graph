@@ -53,17 +53,18 @@ func AddFollowedToDB(user string, names <-chan string, next chan<- string, db *n
 			return err
 		}
 	}
-	tx.Commit()
 	select {
 	case err := <-error_channel:
 		return err
 	default:
+		tx.Commit()
 		return nil
 	}
 
 }
 
 func AddFollowersToDB(user string, names <-chan string, next chan<- string, db *neoism.Database) error {
+	var wg sync.WaitGroup
 	var qs []*neoism.CypherQuery
 	old_count := 0
 	count := 0
