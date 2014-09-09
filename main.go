@@ -18,14 +18,14 @@ func main() {
 		fmt.Println("ERROR1: ", err.Error())
 		return
 	}
-	next := make(chan string, 10000)
+	next := make(chan string, 100000)
 	next <- "hughbliss"
 	for user := range next {
 		sem <- true
 		go func(user string) {
 			defer func() { <-sem }()
 			var followed_wg sync.WaitGroup
-			followed := make(chan string, 10000)
+			followed := make(chan string, 100000)
 			followed_wg.Add(1)
 			go func() {
 				defer followed_wg.Done()
@@ -36,7 +36,7 @@ func main() {
 			}()
 
 			fmt.Printf("ADDING %s's followed channels to db\n", user)
-			if err := graph.AddFollowedToDB(user, followed, next, db); err != nil {
+			if err := graph.AddUsersToDB(user, followed, next, db, 0); err != nil {
 				fmt.Println("ERROR3: ", err.Error())
 			}
 			followed_wg.Wait()
@@ -55,7 +55,7 @@ func main() {
 				}
 			}()
 			fmt.Printf("ADDING %s's followers to db\n", user)
-			if err := graph.AddFollowersToDB(user, followers, next, db); err != nil {
+			if err := graph.AddUsersToDB(user, followers, next, db, 1); err != nil {
 				fmt.Println("ERROR3: ", err.Error())
 			}
 			follower_wg.Wait()
